@@ -5,7 +5,7 @@ on:
       revision:
         description: SDK revision to validate
         required: true
-        default: 004d2288501a6f82949ffc626d3213f0a091ca05
+        default: 4798de26270de90b17543177060e62d27b7109fd
 permissions:
   contents: read
 jobs:
@@ -30,6 +30,8 @@ jobs:
           toolchain: nightly
           components: rustfmt
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+        with:
+          cache-on-failure: true
       - name: Format contribution
         run: |
           cargo +nightly fmt --all
@@ -43,7 +45,7 @@ jobs:
       - name: Unpatched exporter must fail the new regression tests
         run: |
           cp sdk/src/crjson.rs evidence/fixed-crjson.rs
-          git show 2e2cd416a04739c1f726987fb50d89e0b714fdfb:sdk/src/crjson.rs > sdk/src/crjson.rs
+          git show 9393abd:sdk/src/crjson.rs > sdk/src/crjson.rs
           set +e
           cargo test -p c2pa --features file_io --lib test_binary_thumbnail_crjson_ -- --nocapture > evidence/baseline.log 2>&1
           result=$?
