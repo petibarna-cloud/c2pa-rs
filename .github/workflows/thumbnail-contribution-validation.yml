@@ -5,7 +5,7 @@ on:
       revision:
         description: SDK revision to validate
         required: true
-        default: c109e5a14dd4b10bd0a17a7c980917c672805f7e
+        default: 004d2288501a6f82949ffc626d3213f0a091ca05
 permissions:
   contents: read
 jobs:
@@ -43,7 +43,7 @@ jobs:
       - name: Unpatched exporter must fail the new regression tests
         run: |
           cp sdk/src/crjson.rs evidence/fixed-crjson.rs
-          git show 31fd77228527022cfaab831d7387f7c336708a25:sdk/src/crjson.rs > sdk/src/crjson.rs
+          git show 2e2cd416a04739c1f726987fb50d89e0b714fdfb:sdk/src/crjson.rs > sdk/src/crjson.rs
           set +e
           cargo test -p c2pa --features file_io --lib test_binary_thumbnail_crjson_ -- --nocapture > evidence/baseline.log 2>&1
           result=$?
