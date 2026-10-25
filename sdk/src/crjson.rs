@@ -408,8 +408,7 @@ impl<'a> CrJsonExporter<'a> {
     ///
     /// * Ingredient assertions use the internal [`assertions::Ingredient`] custom serializer,
     ///   which emits Dublin-Core field names (`dc:title`, `dc:format`, …).
-    /// * Binary thumbnails emit `{thumbnailType, mimeType}` per the crJSON schema.
-    /// * Other binary / UUID assertions emit the reference-object form `{format, identifier, hash}`.
+    /// * Binary / UUID assertions emit the reference-object form `{format, identifier, hash}`.
     /// * Everything else is decoded via [`Assertion::as_json_object`] and passed through
     ///   [`fix_hash_encoding`] to convert byte arrays to base64.
     fn claim_assertion_to_value(
@@ -433,25 +432,6 @@ impl<'a> CrJsonExporter<'a> {
 
         match assertion.decode_data() {
             AssertionData::Binary(_) | AssertionData::Uuid(_, _) => {
-                // Preserve the embedded MIME, including invalid values, so consumers
-                // can evaluate it rather than infer a valid type from the label.
-                if matches!(assertion.decode_data(), AssertionData::Binary(_)) {
-                    let label = ca.label_raw();
-                    for (prefix, thumbnail_type) in [
-                        (assertion_labels::CLAIM_THUMBNAIL, 0),
-                        (assertion_labels::INGREDIENT_THUMBNAIL, 1),
-                    ] {
-                        if let Some(suffix) = label.strip_prefix(prefix) {
-                            if suffix.is_empty() || suffix.starts_with('.') {
-                                return Ok(Some(json!({
-                                    "thumbnailType": thumbnail_type,
-                                    "mimeType": assertion.content_type()
-                                })));
-                            }
-                        }
-                    }
-                }
-
                 let absolute_uri = to_assertion_uri(manifest_label, &ca.label());
                 Ok(Some(json!({
                     "format": assertion.content_type(),
@@ -870,7 +850,6 @@ mod tests {
     use crate::{reader::Reader, validation_results::ValidationState};
 
     const IMAGE_WITH_MANIFEST: &[u8] = include_bytes!("../tests/fixtures/CA.jpg");
-
 
     fn binary_test_assertion(label: &str, mime_type: &str, instance: usize) -> crate::claim::ClaimAssertion {
         crate::claim::ClaimAssertion::new(
