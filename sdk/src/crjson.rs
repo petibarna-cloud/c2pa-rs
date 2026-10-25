@@ -851,6 +851,108 @@ mod tests {
 
     const IMAGE_WITH_MANIFEST: &[u8] = include_bytes!("../tests/fixtures/CA.jpg");
 
+
+    fn binary_test_assertion(label: &str, mime_type: &str, instance: usize) -> crate::claim::ClaimAssertion {
+        crate::claim::ClaimAssertion::new(
+            crate::assertion::Assertion::from_data_binary(label, mime_type, &[1, 2, 3]),
+            instance,
+            &[4, 5, 6],
+            "sha256",
+            None,
+            crate::claim::ClaimAssertionType::Created,
+        )
+    }
+
+    #[test]
+    fn test_binary_thumbnail_crjson_schema_fields() -> Result<()> {
+        let reader = Reader::default();
+        for (label, mime_type, instance, thumbnail_type) in [
+            ("c2pa.thumbnail.claim.jpeg", "image/jpeg", 0, 0),
+            ("c2pa.thumbnail.claim.png", "image/png", 0, 0),
+            ("c2pa.thumbnail.ingredient.png", "image/png", 0, 1),
+            ("c2pa.thumbnail.ingredient.jpeg", "image/jpeg", 2, 1),
+            ("c2pa.thumbnail.claim", "image/jpeg", 0, 0),
+            ("c2pa.thumbnail.ingredient", "image/png", 1, 1),
+        ] {
+            let assertion = binary_test_assertion(label, mime_type, instance);
+            let value = reader.claim_assertion_to_value("urn:uuid:test", &assertion)?;
+            assert_eq!(value, Some(json!({
+                "thumbnailType": thumbnail_type,
+                "mimeType": mime_type,
+            })), "{label}, instance {instance}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_binary_thumbnail_crjson_preserves_invalid_mime() -> Result<()> {
+        let reader = Reader::default();
+        for mime_type in ["application/octet-stream", "", "image/not-a-supported-type"] {
+            let assertion = binary_test_assertion("c2pa.thumbnail.claim.jpeg", mime_type, 0);
+            assert_eq!(reader.claim_assertion_to_value("urn:uuid:test", &assertion)?,
+                Some(json!({ "thumbnailType": 0, "mimeType": mime_type })));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_binary_thumbnail_crjson_unrelated_binary_unchanged() -> Result<()> {
+        let reader = Reader::default();
+        for label in ["org.example.binary", "c2pa.thumbnail.claimant.jpeg", "c2pa.thumbnail.ingredients.png"] {
+            let assertion = binary_test_assertion(label, "application/octet-stream", 1);
+            assert_eq!(reader.claim_assertion_to_value("urn:uuid:test", &assertion)?,
+                Some(json!({
+                    "format": "application/octet-stream",
+                    "identifier": to_assertion_uri("urn:uuid:test", &assertion.label()),
+                    "hash": base64::encode_b64_wrapped(&[4, 5, 6]),
+                })));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_binary_thumbnail_crjson_uuid_unchanged() -> Result<()> {
+        let assertion = crate::claim::ClaimAssertion::new(
+            crate::assertion::Assertion::from_data_uuid("c2pa.thumbnail.claim.jpeg", "00000000-0000-0000-0000-000000000001", &[1, 2, 3]),
+            0, &[4, 5, 6], "sha256", None, crate::claim::ClaimAssertionType::Created,
+        );
+        assert_eq!(Reader::default().claim_assertion_to_value("urn:uuid:test", &assertion)?,
+            Some(json!({
+                "format": "application/octet-stream",
+                "identifier": to_assertion_uri("urn:uuid:test", &assertion.label()),
+                "hash": base64::encode_b64_wrapped(&[4, 5, 6]),
+            })));
+        Ok(())
+    }
+
+    #[test]
+    fn test_binary_thumbnail_crjson_signed_fixtures() -> Result<()> {
+        let mut claim_thumbnails = 0;
+        let mut ingredient_thumbnails = 0;
+        for image in [include_bytes!("../tests/fixtures/C.jpg").as_slice(), IMAGE_WITH_MANIFEST] {
+            let reader = Reader::default().with_stream("image/jpeg", std::io::Cursor::new(image))?;
+            let document = reader.to_crjson_value()?;
+            for manifest in document["manifests"].as_array().unwrap() {
+                for (label, thumbnail) in manifest["assertions"].as_object().unwrap() {
+                    let thumbnail_type = if label.starts_with("c2pa.thumbnail.claim") {
+                        claim_thumbnails += 1;
+                        0
+                    } else if label.starts_with("c2pa.thumbnail.ingredient") {
+                        ingredient_thumbnails += 1;
+                        1
+                    } else {
+                        continue;
+                    };
+                    let mime_type = if label.ends_with(".png") { "image/png" } else { "image/jpeg" };
+                    assert_eq!(thumbnail, &json!({ "thumbnailType": thumbnail_type, "mimeType": mime_type }), "{label}");
+                }
+            }
+        }
+        assert!(claim_thumbnails > 0, "fixture must exercise claim thumbnails");
+        assert!(ingredient_thumbnails > 0, "fixture must exercise ingredient thumbnails");
+        Ok(())
+    }
+
     #[test]
     fn test_jpeg_trust_reader_from_stream() -> Result<()> {
         let reader = Reader::default()
