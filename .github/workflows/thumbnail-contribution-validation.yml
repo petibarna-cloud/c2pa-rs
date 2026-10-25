@@ -41,13 +41,13 @@ jobs:
       - name: Fixed crJSON module tests
         run: |
           set -o pipefail
-          cargo test -p c2pa --features file_io --lib crjson::tests -- --nocapture 2>&1 | tee evidence/fixed.log
+          cargo +stable test -p c2pa --features file_io --lib crjson::tests -- --nocapture 2>&1 | tee evidence/fixed.log
       - name: Unpatched exporter must fail the new regression tests
         run: |
           cp sdk/src/crjson.rs evidence/fixed-crjson.rs
           git show 9393abd:sdk/src/crjson.rs > sdk/src/crjson.rs
           set +e
-          cargo test -p c2pa --features file_io --lib test_binary_thumbnail_crjson_ -- --nocapture > evidence/baseline.log 2>&1
+          cargo +stable test -p c2pa --features file_io --lib test_binary_thumbnail_crjson_ -- --nocapture > evidence/baseline.log 2>&1
           result=$?
           set -e
           cat evidence/baseline.log
@@ -60,7 +60,7 @@ jobs:
       - name: Clippy for library and tests
         run: |
           set -o pipefail
-          cargo clippy -p c2pa --features file_io --lib --tests -- -D warnings 2>&1 | tee evidence/clippy.log
+          cargo +stable clippy -p c2pa --features file_io --lib --tests -- -D warnings 2>&1 | tee evidence/clippy.log
       - name: Final formatting check
         run: cargo +nightly fmt --all --check
       - uses: actions/upload-artifact@v4
