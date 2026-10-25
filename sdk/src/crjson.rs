@@ -895,7 +895,7 @@ mod tests {
             ("c2pa.thumbnail.ingredient", "image/png", 1, 1),
         ] {
             let assertion = binary_test_assertion(label, mime_type, instance);
-            let value = reader.claim_assertion_to_value("urn:uuid:test", &assertion)?;
+            let value = CrJsonExporter::new(&reader).claim_assertion_to_value("urn:uuid:test", &assertion)?;
             assert_eq!(value, Some(json!({
                 "thumbnailType": thumbnail_type,
                 "mimeType": mime_type,
@@ -909,7 +909,7 @@ mod tests {
         let reader = Reader::default();
         for mime_type in ["application/octet-stream", "", "image/not-a-supported-type"] {
             let assertion = binary_test_assertion("c2pa.thumbnail.claim.jpeg", mime_type, 0);
-            assert_eq!(reader.claim_assertion_to_value("urn:uuid:test", &assertion)?,
+            assert_eq!(CrJsonExporter::new(&reader).claim_assertion_to_value("urn:uuid:test", &assertion)?,
                 Some(json!({ "thumbnailType": 0, "mimeType": mime_type })));
         }
         Ok(())
@@ -920,7 +920,7 @@ mod tests {
         let reader = Reader::default();
         for label in ["org.example.binary", "c2pa.thumbnail.claimant.jpeg", "c2pa.thumbnail.ingredients.png"] {
             let assertion = binary_test_assertion(label, "application/octet-stream", 1);
-            assert_eq!(reader.claim_assertion_to_value("urn:uuid:test", &assertion)?,
+            assert_eq!(CrJsonExporter::new(&reader).claim_assertion_to_value("urn:uuid:test", &assertion)?,
                 Some(json!({
                     "format": "application/octet-stream",
                     "identifier": to_assertion_uri("urn:uuid:test", &assertion.label()),
@@ -936,7 +936,7 @@ mod tests {
             crate::assertion::Assertion::from_data_uuid("c2pa.thumbnail.claim.jpeg", "00000000-0000-0000-0000-000000000001", &[1, 2, 3]),
             0, &[4, 5, 6], "sha256", None, crate::claim::ClaimAssertionType::Created,
         );
-        assert_eq!(Reader::default().claim_assertion_to_value("urn:uuid:test", &assertion)?,
+        assert_eq!(CrJsonExporter::new(&Reader::default()).claim_assertion_to_value("urn:uuid:test", &assertion)?,
             Some(json!({
                 "format": "application/octet-stream",
                 "identifier": to_assertion_uri("urn:uuid:test", &assertion.label()),
@@ -947,6 +947,8 @@ mod tests {
 
     #[test]
     fn test_binary_thumbnail_crjson_signed_fixtures() -> Result<()> {
+        let schema: Value = serde_json::from_str(include_str!("../tests/fixtures/schemas/crJSON-schema.json"))?;
+        let validator = jsonschema::validator_for(&schema["definitions"]["thumbnailAssertion"]).unwrap();
         let mut claim_thumbnails = 0;
         let mut ingredient_thumbnails = 0;
         for image in [include_bytes!("../tests/fixtures/C.jpg").as_slice(), IMAGE_WITH_MANIFEST] {
@@ -963,6 +965,7 @@ mod tests {
                     } else {
                         continue;
                     };
+                    assert!(validator.is_valid(thumbnail), "{label}: {thumbnail}");
                     let mime_type = if label.ends_with(".png") { "image/png" } else { "image/jpeg" };
                     assert_eq!(thumbnail, &json!({ "thumbnailType": thumbnail_type, "mimeType": mime_type }), "{label}");
                 }
