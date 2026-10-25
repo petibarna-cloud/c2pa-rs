@@ -1,0 +1,68 @@
+name: Thumbnail contribution validation
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: SDK revision to validate
+        required: true
+        default: c109e5a14dd4b10bd0a17a7c980917c672805f7e
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.revision }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
+        with:
+          toolchain: nightly
+          components: rustfmt
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+      - name: Format contribution
+        run: |
+          cargo +nightly fmt --all
+          mkdir -p evidence
+          cp sdk/src/crjson.rs evidence/crjson.rs
+          git diff > evidence/formatting.diff
+      - name: Fixed crJSON module tests
+        run: |
+          set -o pipefail
+          cargo test -p c2pa --features file_io --lib crjson::tests -- --nocapture 2>&1 | tee evidence/fixed.log
+      - name: Unpatched exporter must fail the new regression tests
+        run: |
+          cp sdk/src/crjson.rs evidence/fixed-crjson.rs
+          git show 31fd77228527022cfaab831d7387f7c336708a25:sdk/src/crjson.rs > sdk/src/crjson.rs
+          set +e
+          cargo test -p c2pa --features file_io --lib test_binary_thumbnail_crjson_ -- --nocapture > evidence/baseline.log 2>&1
+          result=$?
+          set -e
+          cat evidence/baseline.log
+          test "$result" -ne 0
+          grep -q 'test result: FAILED.*3 failed' evidence/baseline.log
+          grep -q 'test_binary_thumbnail_crjson_schema_fields ... FAILED' evidence/baseline.log
+          grep -q 'test_binary_thumbnail_crjson_preserves_invalid_mime ... FAILED' evidence/baseline.log
+          grep -q 'test_binary_thumbnail_crjson_signed_fixtures ... FAILED' evidence/baseline.log
+          cp evidence/fixed-crjson.rs sdk/src/crjson.rs
+      - name: Clippy for library and tests
+        run: |
+          set -o pipefail
+          cargo clippy -p c2pa --features file_io --lib --tests -- -D warnings 2>&1 | tee evidence/clippy.log
+      - name: Final formatting check
+        run: cargo +nightly fmt --all --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: thumbnail-regression-evidence
+          path: evidence/
